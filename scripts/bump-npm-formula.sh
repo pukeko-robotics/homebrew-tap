@@ -8,7 +8,7 @@
 # The PR is opened by you, not by a workflow, so `brew test-bot` runs on it; once it is green,
 # publish it with the "brew pr-pull" workflow (see README.md).
 #
-# Needs: git, gh (authenticated), npm, curl, and sha256sum or shasum.
+# Needs: git, gh (authenticated), node, npm, curl, and sha256sum or shasum.
 set -euo pipefail
 
 die() {
@@ -43,6 +43,13 @@ tarball_base="${package##*/}" # npm names the tarball after the unscoped package
 latest="$(npm view "${package}" dist-tags.latest)"
 version="${2:-${latest}}"
 [[ "${version}" == "${latest}" ]] || die "${version} is not the npm latest dist-tag of ${package} (latest is ${latest})"
+
+# Homebrew installs npm formulae with --min-release-age=1, so a version (or any of its dependencies)
+# published less than a day ago fails `brew install` with ETARGET.
+published="$(npm view "${package}" "time[${version}]")"
+ready_at="$(node -p "new Date(Date.parse('${published}') + 864e5).toISOString()")"
+too_new="$(node -p "Date.now() < Date.parse('${ready_at}')")"
+[[ "${too_new}" == "false" ]] || die "${package}@${version} was published at ${published}; Homebrew will not install it before ${ready_at}"
 
 new_url="https://registry.npmjs.org/${package}/-/${tarball_base}-${version}.tgz"
 if [[ "${new_url}" == "${current_url}" ]]
