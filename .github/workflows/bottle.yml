@@ -1,0 +1,165 @@
+name: brew bottle
+
+# Builds and publishes bottles for formulae that land on main, however they were merged.
+# The pull request run of tests.yml has already audited and tested the change; this rebuilds the
+# bottles from what is actually on main, uploads them to a GitHub release, and pushes the
+# bottle-block commit. That push uses GITHUB_TOKEN, so it does not trigger this workflow again.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - Formula/**
+  workflow_dispatch:
+    inputs:
+      formulae:
+        description: Comma-separated formula names to bottle from main (e.g. gaunt-sloth)
+        required: true
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash -xeuo pipefail {0}
+
+concurrency:
+  group: brew-bottle
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      formulae: ${{ steps.detect.outputs.formulae }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect formulae to bottle
+        id: detect
+        env:
+          BEFORE: ${{ github.event.before }}
+          INPUT_FORMULAE: ${{ inputs.formulae }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]
+          then
+            names="$(tr ',' '\n' <<<"${INPUT_FORMULAE}")"
+          else
+            if [[ -z "${BEFORE}" || "${BEFORE}" =~ ^0+$ ]] || ! git cat-file -e "${BEFORE}^{commit}"
+            then
+              BEFORE="$(git rev-parse "${GITHUB_SHA}~1")"
+            fi
+            names="$(git diff --name-only --diff-filter=AM "${BEFORE}" "${GITHUB_SHA}" -- 'Formula/*.rb' |
+              sed -e 's|^Formula/||' -e 's|\.rb$||')"
+          fi
+
+          repository="${GITHUB_REPOSITORY,,}"
+          tap="${repository/\/homebrew-//}"
+          formulae=""
+          while read -r name
+          do
+            name="$(tr -d '[:space:]' <<<"${name}")"
+            [[ -n "${name}" ]] || continue
+            if [[ ! "${name}" =~ ^[a-z0-9][a-z0-9@._+-]*$ ]] || [[ ! -f "Formula/${name}.rb" ]]
+            then
+              echo "::error::Not a formula in this tap: ${name}"
+              exit 1
+            fi
+            formulae="${formulae:+${formulae},}${tap}/${name}"
+          done <<<"${names}"
+
+          echo "formulae=${formulae}" >>"${GITHUB_OUTPUT}"
+
+  bottle:
+    needs: detect
+    if: needs.detect.outputs.formulae != ''
+    strategy:
+      matrix:
+        os: [ macos-26 ]
+        include:
+          - os: ubuntu-latest
+            container:
+              image: ghcr.io/homebrew/brew:main
+              options: --privileged
+    runs-on: ${{ matrix.os }}
+    container: ${{ fromJSON(toJSON(matrix.container)) }} # zizmor: ignore[unpinned-images]
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    steps:
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@848c272c7bfe984a197bd4d16383f4c106ec61e6 # 2026.09.21.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Homebrew Bundler RubyGems
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.set-up-homebrew.outputs.gems-path }}
+          key: ${{ matrix.os }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
+          restore-keys: ${{ matrix.os }}-rubygems-
+
+      - run: brew test-bot --only-cleanup-before
+
+      - run: brew test-bot --only-setup
+
+      - name: Build bottles
+        env:
+          FORMULAE: ${{ needs.detect.outputs.formulae }}
+        run: brew test-bot --only-formulae --skip-dependents --testing-formulae="${FORMULAE}"
+
+      - name: Upload bottles as artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bottles_${{ matrix.os }}
+          path: '*.bottle.*'
+          if-no-files-found: error
+
+  upload:
+    needs: bottle
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@848c272c7bfe984a197bd4d16383f4c106ec61e6 # 2026.09.21.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up git
+        id: git_setup
+        uses: Homebrew/actions/git-user-config@848c272c7bfe984a197bd4d16383f4c106ec61e6 # 2026.09.21.1
+
+      - name: Download bottles
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: bottles_*
+          merge-multiple: true
+          path: ${{ runner.temp }}/bottles
+
+      - name: Generate build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/bottles/*.tar.gz
+
+      - name: Upload bottles and commit the bottle block
+        working-directory: ${{ runner.temp }}/bottles
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_GIT_COMMITTER_NAME: ${{ steps.git_setup.outputs.name }}
+          HOMEBREW_GIT_COMMITTER_EMAIL: ${{ steps.git_setup.outputs.email }}
+        run: brew pr-upload --debug
+
+      - name: Push commits
+        uses: Homebrew/actions/git-try-push@848c272c7bfe984a197bd4d16383f4c106ec61e6 # 2026.09.21.1
+        with:
+          branch: main

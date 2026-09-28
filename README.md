@@ -34,13 +34,15 @@ Formulae are updated by hand; nothing in this repo watches upstream releases.
    `brew install` with `ETARGET`, and the script refuses it.
 2. **Test.** The pull request runs `brew test-bot` (`.github/workflows/tests.yml`) on macOS and
    Linux: audit, install from source, `brew test`, and bottle build.
-3. **Publish.** When the pull request is green, run the **brew pr-pull** workflow
-   (`.github/workflows/publish.yml`) from the Actions tab with the pull request number. It uploads
-   the bottles to a GitHub release, adds the bottle block to the formula, and pushes to `main`.
-   Don't merge the pull request with the GitHub button — that skips the bottles.
+3. **Merge.** When the pull request is green, merge it with the GitHub merge button. The
+   **brew bottle** workflow (`.github/workflows/bottle.yml`) then runs on `main`: it rebuilds the
+   bottles on macOS and Linux from what landed, uploads them to a GitHub release, and pushes a
+   commit adding the bottle block to the formula. Until that commit lands, the formula installs
+   from source. If the workflow fails, re-run it, or run it from the Actions tab with the formula
+   names.
 
 A new formula follows the same route: add `Formula/<name>.rb` on a branch and open a pull request.
-Pushes to `main` only run the syntax check, so a formula that never went through a pull request has
-never been installed by CI.
+A formula pushed straight to `main` is still built, tested and bottled by **brew bottle**, but only
+after it has landed.
 
 Dependabot keeps the pinned GitHub Actions current.
