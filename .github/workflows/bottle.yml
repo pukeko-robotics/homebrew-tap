@@ -111,9 +111,19 @@ jobs:
       - run: brew test-bot --only-setup
 
       - name: Build bottles
+        id: build
         env:
           FORMULAE: ${{ needs.detect.outputs.formulae }}
         run: brew test-bot --only-formulae --skip-dependents --testing-formulae="${FORMULAE}"
+
+      # test-bot only warns when a formula without a bottle for the current OS fails to build.
+      - name: Fail on skipped or failed formulae
+        if: steps.build.outputs.skipped_or_failed_formulae != ''
+        env:
+          SKIPPED_OR_FAILED: ${{ steps.build.outputs.skipped_or_failed_formulae }}
+        run: |
+          echo "::error::Skipped or failed formulae: ${SKIPPED_OR_FAILED}"
+          exit 1
 
       - name: Upload bottles as artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

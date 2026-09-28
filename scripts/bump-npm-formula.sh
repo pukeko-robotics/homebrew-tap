@@ -68,11 +68,24 @@ else
   sha="$(shasum -a 256 "${tmp}/pkg.tgz" | cut -d' ' -f1)"
 fi
 
+# Drop the bottle block: its bottles belong to the old version, and the "brew bottle" workflow
+# writes a new one after the merge. Until then the formula installs from source.
 sed -e "s|^  url \".*\"$|  url \"${new_url}\"|" \
   -e "s|^  sha256 \".*\"$|  sha256 \"${sha}\"|" \
-  "${file}" >"${tmp}/formula.rb"
+  "${file}" |
+  awk '
+    /^  bottle do$/ { skip = 1; next }
+    skip && /^  end$/ { skip = 0; drop_blank = 1; next }
+    skip { next }
+    drop_blank && /^$/ { drop_blank = 0; next }
+    { drop_blank = 0; print }
+  ' >"${tmp}/formula.rb"
 grep -qF "  url \"${new_url}\"" "${tmp}/formula.rb" || die "failed to rewrite url in ${file}"
 grep -qF "  sha256 \"${sha}\"" "${tmp}/formula.rb" || die "failed to rewrite sha256 in ${file}"
+if grep -q "^  bottle do$" "${tmp}/formula.rb"
+then
+  die "failed to remove the bottle block from ${file}"
+fi
 cp "${tmp}/formula.rb" "${file}"
 
 branch="bump-${formula}-${version}"
