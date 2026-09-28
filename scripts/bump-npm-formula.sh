@@ -28,8 +28,10 @@ file="Formula/${formula}.rb"
 cd "${repo_root}"
 [[ -f "${file}" ]] || die "${file} not found"
 
-[[ -z "$(git status --porcelain)" ]] || die "working tree is not clean"
-[[ "$(git rev-parse --abbrev-ref HEAD)" == "main" ]] || die "run this from main"
+dirty="$(git status --porcelain)"
+[[ -z "${dirty}" ]] || die "working tree is not clean"
+current_branch="$(git rev-parse --abbrev-ref HEAD)"
+[[ "${current_branch}" == "main" ]] || die "run this from main"
 git pull --ff-only --quiet
 
 current_url="$(sed -n 's/^  url "\(.*\)"$/\1/p' "${file}")"
