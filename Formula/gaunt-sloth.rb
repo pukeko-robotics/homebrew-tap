@@ -6,10 +6,10 @@ class GauntSloth < Formula
   license "MIT"
 
   bottle do
-    root_url "https://github.com/pukeko-robotics/homebrew-tap/releases/download/gaunt-sloth-2.1.2"
-    rebuild 1
-    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "c428768fd33cf9a460d9c83939883c9103d32967829047be31d5348432aea0c2"
-    sha256 cellar: :any_skip_relocation, x86_64_linux: "5ba660b5c4871816de018f96d0458284083792124faa2c63cb08441b7045bbfd"
+    root_url "https://github.com/pukeko-robotics/homebrew-tap/releases/download/gaunt-sloth-2.1.3"
+    rebuild 2
+    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "4ec9f7e1ae50cc030cc05270cbd6cf16fcb65b57606e9a6695cc5aba8f1810c0"
+    sha256 cellar: :any_skip_relocation, x86_64_linux: "6e2c64a0c2f61338ffd171a8a701adb51d40cbfaf5113b7103f79305e3e6d7ad"
   end
 
   depends_on "node"
