@@ -1,8 +1,8 @@
 class GauntSloth < Formula
   desc "Command-line AI assistant for code review, PR analysis and coding sessions"
   homepage "https://gauntsloth.app"
-  url "https://registry.npmjs.org/gaunt-sloth/-/gaunt-sloth-2.2.2.tgz"
-  sha256 "6f45e015a37d931f92be1dbba382234a16606a09b5f66d06c7a35e1242afd8a8"
+  url "https://registry.npmjs.org/gaunt-sloth/-/gaunt-sloth-2.2.3.tgz"
+  sha256 "44007195ee9c72538f289ac1fd9b99ec71576c7a3cfbf776d1617a0ba9b8008f"
   license "MIT"
 
   depends_on "node"
